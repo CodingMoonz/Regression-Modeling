@@ -1,26 +1,59 @@
+# if not already installed
+install.packages("caret")
+install.packages("pROC")
+install.packages("ggplot2")
+install.packages("stargazer")  
 # Load libraries
 library(ggplot2)
 library(dplyr)
 library(caret)
 library(pROC)
-install.packages("caret")
-install.packages("pROC")
-install.packages("ggplot2")
+library(stargazer)
 
 
 # Load the dataset
 loan_data <- read.csv("Loan.csv")
 
-# Check the first few rows
-head(loan_data)
+# Subset numeric columns
+numeric_vars <- c(
+  "RiskScore", "AnnualIncome", "CreditScore",
+  "LoanAmount", "MonthlyDebtPayments", "CreditCardUtilizationRate",
+  "DebtToIncomeRatio", "LengthOfCreditHistory", "TotalLiabilities",
+  "NetWorth", "InterestRate", "MonthlyLoanPayment"
+)
+# Remove rows with any NAs in these columns
+clean_data <- na.omit(train_data[, numeric_vars])
+# Run stargazer on cleaned data
+library(stargazer)
+stargazer(
+  clean_data,
+  type = "text",
+  title = "Descriptive Statistics (Cleaned Numeric Variables Only)",
+  digits = 2
+)
 
-# Ensure LoanApproved is a factor (for classification)
-loan_data$LoanApproved <- as.factor(loan_data$LoanApproved)
 
-# Basic exploration: plot RiskScore vs LoanApproved
+# plot for LoanAmount and AnnualIncome
+ggplot(loan_data, aes(x = AnnualIncome, y = LoanAmount)) +
+  geom_point(alpha = 0.3, color = "darkgreen") +
+  geom_smooth(method = "lm", color = "firebrick", se = FALSE) +
+  scale_x_continuous(labels = scales::dollar) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Loan Amount vs Annual Income",
+    x = "Annual Income",
+    y = "Loan Amount"
+  ) +
+  theme_minimal()
+
+# plot RiskScore vs LoanApproved
 ggplot(loan_data, aes(x = RiskScore, fill = LoanApproved)) +
   geom_histogram(position = "dodge", bins = 30) +
   labs(title = "Risk Score Distribution by Loan Approval", x = "Risk Score", y = "Count")
+
+
+# Ensure LoanApproved is a factor (for classification)
+loan_data$LoanApproved <- as.factor(loan_data$LoanApproved)
 
 # Split the data into training and testing sets
 set.seed(123) # for reproducibility
@@ -34,28 +67,79 @@ model_logistic <- glm(LoanApproved ~ RiskScore, data = train_data, family = bino
 # Summary of the model
 summary(model_logistic)
 
-# Predict on test data
-predicted_probs <- predict(model_logistic, newdata = test_data, type = "response")
-predicted_classes <- ifelse(predicted_probs > 0.5, 1, 0)
-predicted_classes <- as.factor(predicted_classes)
+
+# lm model
+model_riskscore <- lm(
+  RiskScore ~ AnnualIncome + CreditScore + EmploymentStatus +
+    LoanAmount +
+    MonthlyDebtPayments + CreditCardUtilizationRate + DebtToIncomeRatio + BankruptcyHistory + PreviousLoanDefaults + PaymentHistory +
+    LengthOfCreditHistory + TotalLiabilities + NetWorth + InterestRate + MonthlyLoanPayment,
+  data = loan_data
+)
+
+summary(model_riskscore)
+
+# Create a binary variable for loan approval based on RiskScore
+train_data$LoanApproved <- ifelse(train_data$RiskScore <= 50, 1, 0)
+
+# Fit a logistic regression model to predict Loan Approval
+model_loan_approval <- glm(
+  LoanApproved ~ AnnualIncome + CreditScore + EmploymentStatus +
+    LoanAmount + MonthlyDebtPayments + CreditCardUtilizationRate + 
+    DebtToIncomeRatio + BankruptcyHistory + PreviousLoanDefaults + 
+    PaymentHistory + LengthOfCreditHistory + TotalLiabilities + 
+    NetWorth + InterestRate + MonthlyLoanPayment,
+  data = train_data,
+  family = binomial
+)
+
+# View the summary of the model
+summary(model_loan_approval)
+
+# Predict probabilities of loan approval
+train_data$PredictedProb <- predict(model_loan_approval, type = "response")
+
+# classify loan approvals based on a threshold of 0.5 (or any other value)
+train_data$PredictedLoanApproval <- ifelse(train_data$PredictedProb > 0.5, 1, 0)
+
+# Check the first few predictions
+head(train_data[c("RiskScore", "LoanApproved", "PredictedProb", "PredictedLoanApproval")])
+
+# Accuracy of the model
+accuracy <- mean(train_data$PredictedLoanApproval == train_data$LoanApproved)
+print(paste("Accuracy:", round(accuracy * 100, 2), "%"))
 
 # Confusion Matrix
-confusionMatrix(predicted_classes, test_data$LoanApproved)
+table(train_data$LoanApproved, train_data$PredictedLoanApproval)
 
-# ROC Curve and AUC
-roc_curve <- roc(as.numeric(test_data$LoanApproved), predicted_probs)
-plot(roc_curve, col = "blue")
+# ROC curve and AUC
+library(pROC)
+roc_curve <- roc(train_data$LoanApproved, train_data$PredictedProb)
+plot(roc_curve)
 auc(roc_curve)
 
-predict_approval <- function(risk_score) {
-  intercept <- 33.57187
-  coef_risk <- -0.74546
-  log_odds <- intercept + coef_risk * risk_score
-  prob <- 1 / (1 + exp(-log_odds))
-  return(prob)
-}
+# Example new data (replace with actual data for prediction)
+new_data <- data.frame(
+  AnnualIncome = 550000,
+  CreditScore = 700,
+  EmploymentStatus = "Employed",
+  LoanAmount = 100000,
+  MonthlyDebtPayments = 3000,
+  CreditCardUtilizationRate = 0.2,
+  DebtToIncomeRatio = 0.1,
+  BankruptcyHistory = 0,
+  PreviousLoanDefaults = 0,
+  PaymentHistory = 100,
+  LengthOfCreditHistory = 10,
+  TotalLiabilities = 20000,
+  NetWorth = 500000,
+  InterestRate = 5,
+  MonthlyLoanPayment = 2000
+)
 
-# Try with different RiskScores
-predict_approval(40)  # Should return ~0.977
-predict_approval(55)  # Should return very low probability
-predict_approval(30)  # Very high probability
+# Make prediction for new data
+new_data$PredictedProb <- predict(model_loan_approval, newdata = new_data, type = "response")
+new_data$PredictedLoanApproval <- ifelse(new_data$PredictedProb > 0.5, 1, 0)
+
+# View prediction results
+new_data[c("PredictedProb", "PredictedLoanApproval")]
