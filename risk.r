@@ -2,7 +2,7 @@
 install.packages("caret")
 install.packages("pROC")
 install.packages("ggplot2")
-install.packages("stargazer")  
+install.packages("stargazer")
 # Load libraries
 library(ggplot2)
 library(dplyr)
@@ -22,7 +22,7 @@ numeric_vars <- c(
   "NetWorth", "InterestRate", "MonthlyLoanPayment"
 )
 # Remove rows with any NAs in these columns
-clean_data <- na.omit(train_data[, numeric_vars])
+clean_data <- na.omit(loan_data[, numeric_vars])
 # Run stargazer on cleaned data
 library(stargazer)
 stargazer(
@@ -46,26 +46,13 @@ ggplot(loan_data, aes(x = AnnualIncome, y = LoanAmount)) +
   ) +
   theme_minimal()
 
+# Ensure LoanApproved is a factor (for classification)
+loan_data$LoanApproved <- as.factor(loan_data$LoanApproved)
+
 # plot RiskScore vs LoanApproved
 ggplot(loan_data, aes(x = RiskScore, fill = LoanApproved)) +
   geom_histogram(position = "dodge", bins = 30) +
   labs(title = "Risk Score Distribution by Loan Approval", x = "Risk Score", y = "Count")
-
-
-# Ensure LoanApproved is a factor (for classification)
-loan_data$LoanApproved <- as.factor(loan_data$LoanApproved)
-
-# Split the data into training and testing sets
-set.seed(123) # for reproducibility
-train_index <- createDataPartition(loan_data$LoanApproved, p = 0.8, list = FALSE)
-train_data <- loan_data[train_index, ]
-test_data <- loan_data[-train_index, ]
-
-# Build the Logistic Regression Model
-model_logistic <- glm(LoanApproved ~ RiskScore, data = train_data, family = binomial)
-
-# Summary of the model
-summary(model_logistic)
 
 
 # lm model
@@ -78,6 +65,12 @@ model_riskscore <- lm(
 )
 
 summary(model_riskscore)
+
+# Split the data into training and testing sets
+set.seed(123) # for reproducibility
+train_index <- createDataPartition(loan_data$LoanApproved, p = 0.8, list = FALSE)
+train_data <- loan_data[train_index, ]
+test_data <- loan_data[-train_index, ]
 
 # Create a binary variable for loan approval based on RiskScore
 train_data$LoanApproved <- ifelse(train_data$RiskScore <= 50, 1, 0)
@@ -121,10 +114,10 @@ auc(roc_curve)
 # Example new data (replace with actual data for prediction)
 new_data <- data.frame(
   AnnualIncome = 550000,
-  CreditScore = 700,
+  CreditScore = 750,
   EmploymentStatus = "Employed",
   LoanAmount = 100000,
-  MonthlyDebtPayments = 3000,
+  MonthlyDebtPayments = 5000,
   CreditCardUtilizationRate = 0.2,
   DebtToIncomeRatio = 0.1,
   BankruptcyHistory = 0,
@@ -132,7 +125,7 @@ new_data <- data.frame(
   PaymentHistory = 100,
   LengthOfCreditHistory = 10,
   TotalLiabilities = 20000,
-  NetWorth = 500000,
+  NetWorth = 5000000,
   InterestRate = 5,
   MonthlyLoanPayment = 2000
 )
